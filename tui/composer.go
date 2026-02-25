@@ -166,9 +166,9 @@ func (m *Composer) getFromAddress() string {
 	if len(m.accounts) > 0 && m.selectedAccountIdx < len(m.accounts) {
 		acc := m.accounts[m.selectedAccountIdx]
 		if acc.Name != "" {
-			return fmt.Sprintf("%s <%s>", acc.Name, acc.Email)
+			return fmt.Sprintf("%s <%s>", acc.Name, acc.FetchEmail)
 		}
-		return acc.Email
+		return acc.FetchEmail
 	}
 	return ""
 }
@@ -479,7 +479,7 @@ func (m *Composer) View() string {
 		var accountList strings.Builder
 		accountList.WriteString("Select Account:\n\n")
 		for i, acc := range m.accounts {
-			display := acc.Email
+			display := acc.FetchEmail
 			if acc.Name != "" {
 				display = fmt.Sprintf("%s (%s)", acc.Name, acc.FetchEmail)
 			}
