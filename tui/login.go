@@ -49,7 +49,7 @@ func NewLogin(hideTips bool) *Login {
 		case inputProvider:
 			t.Placeholder = "Provider (gmail, icloud, or custom)"
 			t.Focus()
-			t.Prompt = "☁️ > "
+			t.Prompt = "🏢 > "
 		case inputName:
 			t.Placeholder = "Display Name"
 			t.Prompt = "👤 > "
@@ -58,7 +58,7 @@ func NewLogin(hideTips bool) *Login {
 			t.Prompt = "🏠 > "
 		case inputFetchEmail:
 			t.Placeholder = "Email Address"
-			t.Prompt = "✉️ > "
+			t.Prompt = "📧 > "
 		case inputPassword:
 			t.Placeholder = "Password / App Password"
 			t.EchoMode = textinput.EchoPassword
