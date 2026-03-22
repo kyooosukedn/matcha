@@ -629,7 +629,7 @@ func (m *Composer) View() tea.View {
 	if m.confirmingExit {
 		dialog := DialogBoxStyle.Render(
 			lipgloss.JoinVertical(lipgloss.Center,
-				"Discard draft?",
+				"Are you sure you want to exit? This draft will be saved",
 				HelpStyle.Render("\n(y/n)"),
 			),
 		)
