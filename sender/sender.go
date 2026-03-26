@@ -21,6 +21,9 @@ import (
 
 	"github.com/floatpane/matcha/clib"
 	"github.com/floatpane/matcha/config"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 	"go.mozilla.org/pkcs7"
 )
 
@@ -78,6 +81,75 @@ func generateMessageID(from string) string {
 	return fmt.Sprintf("<%x@%s>", buf, from)
 }
 
+// containsMarkup returns true if the string contains Markdown or HTML elements.
+func containsMarkup(body string) bool {
+	// Parse the Markdown into an AST. We will consider most AST node kinds as
+	// markup, but treat bare/autolinks (raw URLs) as plaintext for this
+	// detection: if a link node's visible text equals its destination (or is
+	// the destination wrapped in <>), we allow it.
+	source := []byte(body)
+	md := goldmark.New()
+	reader := text.NewReader(source)
+	doc := md.Parser().Parse(reader)
+
+	var hasMarkup bool
+	ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+
+		switch node.Kind() {
+		case ast.KindDocument, ast.KindParagraph, ast.KindText:
+			// not considered formatting
+			return ast.WalkContinue, nil
+		case ast.KindLink:
+			// Check if this is an autolink/raw URL: the link's text equals the
+			// destination. If so, don't treat it as markup for our purposes.
+			linkNode, ok := node.(*ast.Link)
+			if !ok {
+				hasMarkup = true
+				return ast.WalkStop, nil
+			}
+
+			// Collect the visible text of the link
+			var b strings.Builder
+			for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+				if txt, ok := c.(*ast.Text); ok {
+					b.Write(txt.Segment.Value(source))
+				} else {
+					// non-text content inside link -> treat as markup
+					hasMarkup = true
+					return ast.WalkStop, nil
+				}
+			}
+			linkText := b.String()
+			dest := string(linkNode.Destination)
+
+			// Normalize common autolink representations and allow them.
+			if linkText == dest || linkText == "<"+dest+">" {
+				return ast.WalkContinue, nil
+			}
+
+			// Otherwise treat as markup
+			hasMarkup = true
+			return ast.WalkStop, nil
+		default:
+			hasMarkup = true
+			return ast.WalkStop, nil
+		}
+	})
+	return hasMarkup
+}
+
+// detectPlaintextOnly returns true when the body contains only plain text
+// (no images, no attachments, no markdown/HTML formatting that requires multipart).
+func detectPlaintextOnly(body string, images, attachments map[string][]byte) bool {
+	if len(images) > 0 || len(attachments) > 0 {
+		return false
+	}
+	return !containsMarkup(body)
+}
+
 // SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
 func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool) error {
 	smtpServer := account.GetSMTPServer()
@@ -95,12 +167,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		fromHeader = fmt.Sprintf("%s <%s>", account.Name, account.FetchEmail)
 	}
 
-	// Main message buffer
-	var innerMsg bytes.Buffer
-	innerWriter := multipart.NewWriter(&innerMsg)
-	innerHeaders := fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
-
-	// Set top-level headers for a mixed message type to support content and attachments
+	// Set top-level headers (From/To/Subject/Date/etc)
 	headers := map[string]string{
 		"From":         fromHeader,
 		"To":           strings.Join(to, ", "),
@@ -123,115 +190,248 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		}
 	}
 
-	// --- Body Part (multipart/related) ---
-	// This part contains the multipart/alternative (text/html) and any inline images.
-	relatedHeader := textproto.MIMEHeader{}
-	relatedBoundary := "related-" + innerWriter.Boundary()
-	relatedHeader.Set("Content-Type", "multipart/related; boundary=\""+relatedBoundary+"\"")
-	relatedPartWriter, err := innerWriter.CreatePart(relatedHeader)
-	if err != nil {
-		return err
-	}
-	relatedWriter := multipart.NewWriter(relatedPartWriter)
-	relatedWriter.SetBoundary(relatedBoundary)
-
-	// --- Alternative Part (text and html) ---
-	altHeader := textproto.MIMEHeader{}
-	altBoundary := "alt-" + innerWriter.Boundary()
-	altHeader.Set("Content-Type", "multipart/alternative; boundary=\""+altBoundary+"\"")
-	altPartWriter, err := relatedWriter.CreatePart(altHeader)
-	if err != nil {
-		return err
-	}
-	altWriter := multipart.NewWriter(altPartWriter)
-	altWriter.SetBoundary(altBoundary)
-
-	// Plain text part
-	textHeader := textproto.MIMEHeader{
-		"Content-Type":              {"text/plain; charset=UTF-8"},
-		"Content-Transfer-Encoding": {"quoted-printable"},
-	}
-	textPart, err := altWriter.CreatePart(textHeader)
-	if err != nil {
-		return err
-	}
-	qpText := quotedprintable.NewWriter(textPart)
-	fmt.Fprint(qpText, plainBody)
-	qpText.Close()
-
-	// HTML part
-	htmlHeader := textproto.MIMEHeader{
-		"Content-Type":              {"text/html; charset=UTF-8"},
-		"Content-Transfer-Encoding": {"quoted-printable"},
-	}
-	htmlPart, err := altWriter.CreatePart(htmlHeader)
-	if err != nil {
-		return err
-	}
-	qpHTML := quotedprintable.NewWriter(htmlPart)
-	fmt.Fprint(qpHTML, htmlBody)
-	qpHTML.Close()
-
-	altWriter.Close() // Finish the alternative part
-
-	// --- Inline Images ---
-	for cid, data := range images {
-		ext := filepath.Ext(strings.Split(cid, "@")[0])
-		mimeType := mime.TypeByExtension(ext)
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
-
-		imgHeader := textproto.MIMEHeader{}
-		imgHeader.Set("Content-Type", mimeType)
-		imgHeader.Set("Content-Transfer-Encoding", "base64")
-		imgHeader.Set("Content-ID", "<"+cid+">")
-		imgHeader.Set("Content-Disposition", "inline; filename=\""+cid+"\"")
-
-		imgPart, err := relatedWriter.CreatePart(imgHeader)
-		if err != nil {
-			return err
-		}
-		// data is already base64 encoded, but needs MIME line wrapping (76 chars per line)
-		imgPart.Write([]byte(clib.WrapBase64(string(data))))
-	}
-
-	relatedWriter.Close() // Finish the related part
-
-	// --- Attachments ---
-	for filename, data := range attachments {
-		mimeType := mime.TypeByExtension(filepath.Ext(filename))
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
-
-		partHeader := textproto.MIMEHeader{}
-		partHeader.Set("Content-Type", mimeType)
-		partHeader.Set("Content-Transfer-Encoding", "base64")
-		partHeader.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-
-		attachmentPart, err := innerWriter.CreatePart(partHeader)
-		if err != nil {
-			return err
-		}
-		encodedData := base64.StdEncoding.EncodeToString(data)
-		// MIME requires base64 to be line-wrapped at 76 characters
-		attachmentPart.Write([]byte(clib.WrapBase64(encodedData)))
-	}
-
-	innerWriter.Close() // Finish the inner message
-
+	// prepare final message buffer and S/MIME payload placeholder
 	var msg bytes.Buffer
-	for k, v := range headers {
-		fmt.Fprintf(&msg, "%s: %s\r\n", k, v)
+	headerOrder := []string{"From", "To", "Cc", "Subject", "Date", "Message-ID", "MIME-Version", "In-Reply-To", "References"}
+	for _, k := range headerOrder {
+		if v, ok := headers[k]; ok {
+			fmt.Fprintf(&msg, "%s: %s\r\n", k, v)
+		}
 	}
-
-	innerBodyBytes := append([]byte(innerHeaders), innerMsg.Bytes()...)
 
 	var payloadToEncrypt []byte
+	var innerBodyBytes []byte
+	var err error
 
-	// Handle S/MIME Detached Signing
-	if signSMIME {
+	// Detect plaintext-only mode
+	plaintextOnly := detectPlaintextOnly(plainBody, images, attachments)
+
+	// If plaintext-only mode is requested, build a single text/plain part (or a multipart/signed wrapper when signing)
+	if plaintextOnly {
+		if len(images) > 0 || len(attachments) > 0 {
+			return errors.New("plaintext-only messages cannot contain attachments or inline images")
+		}
+
+		// Build quoted-printable encoded body
+		var encBody bytes.Buffer
+		qp := quotedprintable.NewWriter(&encBody)
+		fmt.Fprint(qp, plainBody)
+		qp.Close()
+		encodedBody := encBody.Bytes()
+
+		// Build the canonical MIME part (headers + body) used for signing/encryption
+		var partBuf bytes.Buffer
+		fmt.Fprintf(&partBuf, "Content-Type: text/plain; charset=UTF-8; format=flowed\r\n")
+		fmt.Fprintf(&partBuf, "Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+		partBuf.Write(encodedBody)
+		canonicalPart := partBuf.Bytes()
+
+		if signSMIME {
+			if account.SMIMECert == "" || account.SMIMEKey == "" {
+				return errors.New("S/MIME certificate or key path is missing")
+			}
+
+			certData, err := os.ReadFile(account.SMIMECert)
+			if err != nil {
+				return err
+			}
+			keyData, err := os.ReadFile(account.SMIMEKey)
+			if err != nil {
+				return err
+			}
+
+			certBlock, _ := pem.Decode(certData)
+			if certBlock == nil {
+				return errors.New("failed to parse certificate PEM")
+			}
+			cert, err := x509.ParseCertificate(certBlock.Bytes)
+			if err != nil {
+				return err
+			}
+
+			keyBlock, _ := pem.Decode(keyData)
+			if keyBlock == nil {
+				return errors.New("failed to parse private key PEM")
+			}
+			privKey, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+			if err != nil {
+				privKey, err = x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+				if err != nil {
+					return err
+				}
+			}
+
+			// canonicalize the part (normalize newlines)
+			canonicalBody := bytes.ReplaceAll(canonicalPart, []byte("\r\n"), []byte("\n"))
+			canonicalBody = bytes.ReplaceAll(canonicalBody, []byte("\n"), []byte("\r\n"))
+
+			signedData, err := pkcs7.NewSignedData(canonicalBody)
+			if err != nil {
+				return err
+			}
+			if err := signedData.AddSigner(cert, privKey, pkcs7.SignerInfoConfig{}); err != nil {
+				return err
+			}
+			detachedSig, err := signedData.Finish()
+			if err != nil {
+				return err
+			}
+
+			var rb [12]byte
+			var outerBoundary string
+			if _, rerr := rand.Read(rb[:]); rerr == nil {
+				outerBoundary = "signed-" + fmt.Sprintf("%x", rb[:])
+			} else {
+				// fallback to time-based boundary if crypto/rand fails
+				outerBoundary = "signed-" + fmt.Sprintf("%d", time.Now().UnixNano())
+			}
+			var signedMsg bytes.Buffer
+			fmt.Fprintf(&signedMsg, "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; micalg=\"sha-256\"; boundary=\"%s\"\r\n\r\n", outerBoundary)
+			fmt.Fprintf(&signedMsg, "This is a cryptographically signed message in MIME format.\r\n\r\n")
+			fmt.Fprintf(&signedMsg, "--%s\r\n", outerBoundary)
+			signedMsg.Write(canonicalBody)
+			fmt.Fprintf(&signedMsg, "\r\n--%s\r\n", outerBoundary)
+			fmt.Fprintf(&signedMsg, "Content-Type: application/pkcs7-signature; name=\"smime.p7s\"\r\n")
+			fmt.Fprintf(&signedMsg, "Content-Transfer-Encoding: base64\r\n")
+			fmt.Fprintf(&signedMsg, "Content-Disposition: attachment; filename=\"smime.p7s\"\r\n\r\n")
+			signedMsg.WriteString(clib.WrapBase64(base64.StdEncoding.EncodeToString(detachedSig)))
+			fmt.Fprintf(&signedMsg, "\r\n--%s--\r\n", outerBoundary)
+
+			if encryptSMIME {
+				payloadToEncrypt = bytes.ReplaceAll(signedMsg.Bytes(), []byte("\r\n"), []byte("\n"))
+				payloadToEncrypt = bytes.ReplaceAll(payloadToEncrypt, []byte("\n"), []byte("\r\n"))
+			} else {
+				msg.Write(signedMsg.Bytes())
+			}
+		} else {
+			// Not signing: either encrypt the canonical part or send as plain single-part
+			canonicalBody := bytes.ReplaceAll(canonicalPart, []byte("\r\n"), []byte("\n"))
+			canonicalBody = bytes.ReplaceAll(canonicalBody, []byte("\n"), []byte("\r\n"))
+			if encryptSMIME {
+				payloadToEncrypt = canonicalBody
+			} else {
+				// Write Content-Type and body as top-level single part
+				fmt.Fprintf(&msg, "Content-Type: text/plain; charset=UTF-8; format=flowed\r\n")
+				fmt.Fprintf(&msg, "Content-Transfer-Encoding: quoted-printable\r\n\r\n")
+				msg.Write(encodedBody)
+			}
+		}
+
+	} else {
+		// --- Non-plaintext path: build multipart/mixed with related/alternative, images and attachments ---
+		var innerMsg bytes.Buffer
+		innerWriter := multipart.NewWriter(&innerMsg)
+		innerHeaders := fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
+
+		// --- Body Part (multipart/related) ---
+		relatedHeader := textproto.MIMEHeader{}
+		relatedBoundary := "related-" + innerWriter.Boundary()
+		relatedHeader.Set("Content-Type", "multipart/related; boundary=\""+relatedBoundary+"\"")
+		relatedPartWriter, err := innerWriter.CreatePart(relatedHeader)
+		if err != nil {
+			return err
+		}
+		relatedWriter := multipart.NewWriter(relatedPartWriter)
+		relatedWriter.SetBoundary(relatedBoundary)
+
+		// --- Alternative Part (text and html) ---
+		altHeader := textproto.MIMEHeader{}
+		altBoundary := "alt-" + innerWriter.Boundary()
+		altHeader.Set("Content-Type", "multipart/alternative; boundary=\""+altBoundary+"\"")
+		altPartWriter, err := relatedWriter.CreatePart(altHeader)
+		if err != nil {
+			return err
+		}
+		altWriter := multipart.NewWriter(altPartWriter)
+		altWriter.SetBoundary(altBoundary)
+
+		// Plain text part
+		textHeader := textproto.MIMEHeader{
+			"Content-Type":              {"text/plain; charset=UTF-8"},
+			"Content-Transfer-Encoding": {"quoted-printable"},
+		}
+		textPart, err := altWriter.CreatePart(textHeader)
+		if err != nil {
+			return err
+		}
+		qpText := quotedprintable.NewWriter(textPart)
+		fmt.Fprint(qpText, plainBody)
+		qpText.Close()
+
+		// HTML part
+		htmlHeader := textproto.MIMEHeader{
+			"Content-Type":              {"text/html; charset=UTF-8"},
+			"Content-Transfer-Encoding": {"quoted-printable"},
+		}
+		htmlPart, err := altWriter.CreatePart(htmlHeader)
+		if err != nil {
+			return err
+		}
+		qpHTML := quotedprintable.NewWriter(htmlPart)
+		fmt.Fprint(qpHTML, htmlBody)
+		qpHTML.Close()
+
+		altWriter.Close() // Finish the alternative part
+
+		// --- Inline Images ---
+		for cid, data := range images {
+			ext := filepath.Ext(strings.Split(cid, "@")[0])
+			mimeType := mime.TypeByExtension(ext)
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+
+			imgHeader := textproto.MIMEHeader{}
+			imgHeader.Set("Content-Type", mimeType)
+			imgHeader.Set("Content-Transfer-Encoding", "base64")
+			imgHeader.Set("Content-ID", "<"+cid+">")
+			imgHeader.Set("Content-Disposition", "inline; filename=\""+cid+"\"")
+
+			imgPart, err := relatedWriter.CreatePart(imgHeader)
+			if err != nil {
+				return err
+			}
+			// Encode raw image bytes to base64, then wrap at 76 chars per MIME rules
+			encodedImg := base64.StdEncoding.EncodeToString(data)
+			imgPart.Write([]byte(clib.WrapBase64(encodedImg)))
+		}
+
+		relatedWriter.Close() // Finish the related part
+
+		// --- Attachments ---
+		for filename, data := range attachments {
+			mimeType := mime.TypeByExtension(filepath.Ext(filename))
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+			}
+
+			partHeader := textproto.MIMEHeader{}
+			partHeader.Set("Content-Type", mimeType)
+			partHeader.Set("Content-Transfer-Encoding", "base64")
+			partHeader.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
+			attachmentPart, err := innerWriter.CreatePart(partHeader)
+			if err != nil {
+				return err
+			}
+			encodedData := base64.StdEncoding.EncodeToString(data)
+			// MIME requires base64 to be line-wrapped at 76 characters
+			attachmentPart.Write([]byte(clib.WrapBase64(encodedData)))
+		}
+
+		innerWriter.Close() // Finish the inner message
+
+		innerBodyBytes = append([]byte(innerHeaders), innerMsg.Bytes()...)
+
+		// If not signing, and not encrypting, write the multipart body now
+		if !signSMIME && !encryptSMIME {
+			fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
+			msg.Write(innerMsg.Bytes())
+		}
+	}
+
+	// Handle S/MIME Detached Signing for non-plaintext messages
+	if signSMIME && len(innerBodyBytes) > 0 {
 		if account.SMIMECert == "" || account.SMIMEKey == "" {
 			return errors.New("S/MIME certificate or key path is missing")
 		}
@@ -281,7 +481,14 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 			return err
 		}
 
-		outerBoundary := "signed-" + innerWriter.Boundary()
+		var rb [12]byte
+		var outerBoundary string
+		if _, rerr := rand.Read(rb[:]); rerr == nil {
+			outerBoundary = "signed-" + fmt.Sprintf("%x", rb[:])
+		} else {
+			// fallback to time-based boundary if crypto/rand fails
+			outerBoundary = "signed-" + fmt.Sprintf("%d", time.Now().UnixNano())
+		}
 		var signedMsg bytes.Buffer
 		fmt.Fprintf(&signedMsg, "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; micalg=\"sha-256\"; boundary=\"%s\"\r\n\r\n", outerBoundary)
 		fmt.Fprintf(&signedMsg, "This is a cryptographically signed message in MIME format.\r\n\r\n")
@@ -299,16 +506,6 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 			payloadToEncrypt = bytes.ReplaceAll(payloadToEncrypt, []byte("\n"), []byte("\r\n"))
 		} else {
 			msg.Write(signedMsg.Bytes())
-		}
-	} else {
-		canonicalBody := bytes.ReplaceAll(innerBodyBytes, []byte("\r\n"), []byte("\n"))
-		canonicalBody = bytes.ReplaceAll(canonicalBody, []byte("\n"), []byte("\r\n"))
-
-		if encryptSMIME {
-			payloadToEncrypt = canonicalBody
-		} else {
-			fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", innerWriter.Boundary())
-			msg.Write(innerMsg.Bytes())
 		}
 	}
 
