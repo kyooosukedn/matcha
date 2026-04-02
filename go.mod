@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/knadh/go-pop3 v1.0.2
 	github.com/yuin/goldmark v1.8.2
-	github.com/yuin/gopher-lua v1.1.1
+	github.com/yuin/gopher-lua v1.1.2
 	github.com/zalando/go-keyring v0.2.8
 	go.mozilla.org/pkcs7 v0.9.0
 	golang.org/x/sys v0.42.0
