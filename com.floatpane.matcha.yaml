@@ -21,6 +21,7 @@ modules:
       - sed 's/@VERSION@/2.4.1/' pcsclite.h.in > pcsclite.h
       - install -Dm644 pcsclite.h /app/include/pcsclite.h
       - gcc -c -o pcsclite_stub.o pcsclite_stub.c
+      - mkdir -p /app/lib
       - ar rcs /app/lib/libpcsclite.a pcsclite_stub.o
       - install -Dm644 libpcsclite.pc /app/lib/pkgconfig/libpcsclite.pc
     sources:
