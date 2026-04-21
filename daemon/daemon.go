@@ -97,7 +97,9 @@ func (d *Daemon) Run() error {
 	defer d.listener.Close()
 
 	// Set socket permissions (owner only).
-	os.Chmod(sockPath, 0700)
+	if err := os.Chmod(sockPath, 0700); err != nil {
+		log.Printf("warning: failed to set socket permissions on %s: %v", sockPath, err)
+	}
 
 	log.Printf("daemon: listening on %s (PID %d)", sockPath, os.Getpid())
 
