@@ -256,26 +256,25 @@ func (m *Login) updateFlags() {
 	m.useOAuth2 = m.inputs[inputAuthMethod].Value() == "oauth2"
 }
 
+// validPort parses a port string and returns the integer value if it is within
+// the valid TCP/UDP port range (1-65535). Returns the fallback if the string is
+// empty or invalid.
+func validPort(s string, fallback int) int {
+	if s == "" {
+		return fallback
+	}
+	p, err := strconv.Atoi(s)
+	if err != nil || p < 1 || p > 65535 {
+		return fallback
+	}
+	return p
+}
+
 // submitForm builds and returns a Credentials message from the current inputs.
 func (m *Login) submitForm() func() tea.Msg {
-	imapPort := 993
-	smtpPort := 587
-	pop3Port := 995
-	if m.inputs[inputIMAPPort].Value() != "" {
-		if p, err := strconv.Atoi(m.inputs[inputIMAPPort].Value()); err == nil {
-			imapPort = p
-		}
-	}
-	if m.inputs[inputSMTPPort].Value() != "" {
-		if p, err := strconv.Atoi(m.inputs[inputSMTPPort].Value()); err == nil {
-			smtpPort = p
-		}
-	}
-	if m.inputs[inputPOP3Port].Value() != "" {
-		if p, err := strconv.Atoi(m.inputs[inputPOP3Port].Value()); err == nil {
-			pop3Port = p
-		}
-	}
+	imapPort := validPort(m.inputs[inputIMAPPort].Value(), 993)
+	smtpPort := validPort(m.inputs[inputSMTPPort].Value(), 587)
+	pop3Port := validPort(m.inputs[inputPOP3Port].Value(), 995)
 
 	authMethod := "password"
 	if m.useOAuth2 {
