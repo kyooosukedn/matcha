@@ -243,7 +243,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 
 			certBlock, _ := pem.Decode(certData)
 			if certBlock == nil {
-				return nil, errors.New("failed to parse certificate PEM")
+				return nil, fmt.Errorf("failed to parse S/MIME certificate PEM from %s: no PEM block found", account.SMIMECert)
 			}
 			cert, err := x509.ParseCertificate(certBlock.Bytes)
 			if err != nil {
@@ -252,7 +252,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 
 			keyBlock, _ := pem.Decode(keyData)
 			if keyBlock == nil {
-				return nil, errors.New("failed to parse private key PEM")
+				return nil, fmt.Errorf("failed to parse S/MIME private key PEM from %s: no PEM block found", account.SMIMEKey)
 			}
 			privKey, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
 			if err != nil {
@@ -448,7 +448,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 
 		certBlock, _ := pem.Decode(certData)
 		if certBlock == nil {
-			return nil, errors.New("failed to parse certificate PEM")
+			return nil, fmt.Errorf("failed to parse S/MIME certificate PEM from %s: no PEM block found", account.SMIMECert)
 		}
 		cert, err := x509.ParseCertificate(certBlock.Bytes)
 		if err != nil {
@@ -457,7 +457,7 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 
 		keyBlock, _ := pem.Decode(keyData)
 		if keyBlock == nil {
-			return nil, errors.New("failed to parse private key PEM")
+			return nil, fmt.Errorf("failed to parse S/MIME private key PEM from %s: no PEM block found", account.SMIMEKey)
 		}
 		privKey, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
 		if err != nil {
