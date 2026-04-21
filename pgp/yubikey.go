@@ -3,6 +3,7 @@ package pgp
 import (
 	"bytes"
 	"crypto"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -93,7 +94,7 @@ func BuildPGPSignedMessage(payload []byte, pin string, publicKeyPath string) ([]
 	headers, body := splitPayload(payload)
 
 	// Build the signed body part (this is what gets hashed)
-	boundary := fmt.Sprintf("----=_Part_%d", time.Now().Unix())
+	boundary := generateBoundary()
 	signedPart := buildSignedPart(headers, body, boundary)
 
 	// Build the OpenPGP signature packet
@@ -503,4 +504,14 @@ func GetYubiKeyInfo() (string, error) {
 	}
 
 	return info, nil
+}
+
+// generateBoundary creates a cryptographically random MIME boundary string.
+func generateBoundary() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err == nil {
+		return fmt.Sprintf("----=_Part_%x", buf)
+	}
+	// Fallback to timestamp if crypto/rand fails (extremely unlikely)
+	return fmt.Sprintf("----=_Part_%d", time.Now().UnixNano())
 }
