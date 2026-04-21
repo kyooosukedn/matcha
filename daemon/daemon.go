@@ -86,7 +86,9 @@ func (d *Daemon) Run() error {
 
 	// Remove stale socket file.
 	sockPath := daemonrpc.SocketPath()
-	os.Remove(sockPath)
+	if err := os.Remove(sockPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove stale socket %s: %w", sockPath, err)
+	}
 
 	// Listen on Unix domain socket.
 	var err error
