@@ -1035,7 +1035,9 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		if path := os.Getenv("DEBUG_KITTY_LOG"); path != "" {
 			if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 				_, _ = f.WriteString(msg)
-				_ = f.Close()
+				if closeErr := f.Close(); closeErr != nil {
+					log.Printf("warning: failed to close kitty debug log: %v", closeErr)
+				}
 			}
 		}
 	}
