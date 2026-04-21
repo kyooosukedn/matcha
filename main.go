@@ -56,6 +56,18 @@ var (
 	version = "dev"
 	commit  = ""
 	date    = ""
+
+	// httpClient is used for all outbound HTTP requests (update checks, asset downloads).
+	// Configured with a 30s timeout to prevent indefinite hangs on slow/unresponsive servers.
+	httpClient = &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("stopped after 5 redirects")
+			}
+			return nil
+		},
+	}
 )
 
 // UpdateAvailableMsg is sent into the TUI when a newer release is detected.
@@ -2784,7 +2796,7 @@ func checkForUpdatesCmd() tea.Cmd {
 	return func() tea.Msg {
 		// Non-fatal: if anything goes wrong we just don't show the update message.
 		const api = "https://api.github.com/repos/floatpane/matcha/releases/latest"
-		resp, err := http.Get(api)
+		resp, err := httpClient.Get(api)
 		if err != nil {
 			return nil
 		}
@@ -3028,7 +3040,7 @@ func isFlagSet(fs *flag.FlagSet, name string) bool {
 
 func runUpdateCLI() error {
 	const api = "https://api.github.com/repos/floatpane/matcha/releases/latest"
-	resp, err := http.Get(api)
+	resp, err := httpClient.Get(api)
 	if err != nil {
 		return fmt.Errorf("could not query releases: %w", err)
 	}
@@ -3166,7 +3178,7 @@ func runUpdateCLI() error {
 	fmt.Println("Downloading...")
 
 	// Download asset
-	respAsset, err := http.Get(assetURL)
+	respAsset, err := httpClient.Get(assetURL)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
