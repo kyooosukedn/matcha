@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime"
 	"mime/quotedprintable"
@@ -153,7 +152,7 @@ func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
 	}
 
 	transformReader := transform.NewReader(reader, encoding.NewDecoder())
-	decodedBody, err := ioutil.ReadAll(transformReader)
+	decodedBody, err := io.ReadAll(transformReader)
 	if err != nil {
 		return "", err
 	}
@@ -185,9 +184,9 @@ func decodeAttachmentData(rawBytes []byte, encoding string) ([]byte, error) {
 	switch strings.ToLower(encoding) {
 	case "base64":
 		decoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(rawBytes))
-		return ioutil.ReadAll(decoder)
+		return io.ReadAll(decoder)
 	case "quoted-printable":
-		return ioutil.ReadAll(quotedprintable.NewReader(bytes.NewReader(rawBytes)))
+		return io.ReadAll(quotedprintable.NewReader(bytes.NewReader(rawBytes)))
 	default:
 		return rawBytes, nil
 	}
