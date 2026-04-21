@@ -91,7 +91,7 @@ func (m *FilePicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						path = filepath.Join(home, path[1:])
 					}
 				}
-				info, err := os.Stat(path)
+				info, err := os.Lstat(path)
 				if err == nil {
 					if info.IsDir() {
 						m.currentPath = path
