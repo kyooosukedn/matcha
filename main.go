@@ -2568,6 +2568,25 @@ func moveEmailToFolderCmd(account *config.Account, uid uint32, accountID string,
 	}
 }
 
+// sanitizeFilename prevents path traversal attacks on attachment downloads.
+// Email attachment filenames come from untrusted email headers and could
+// contain path separators or ".." sequences to escape the Downloads directory.
+func sanitizeFilename(name string) string {
+	// Normalize backslashes to forward slashes so filepath.Base works
+	// correctly on all platforms (Linux doesn't treat \ as a separator)
+	name = strings.ReplaceAll(name, "\\", "/")
+	// Strip any path components, keep only the base filename
+	name = filepath.Base(name)
+	// Replace any remaining path separators (defensive)
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "..", "_")
+	// Reject hidden files and empty names
+	if name == "" || name == "." || strings.HasPrefix(name, ".") {
+		name = "attachment"
+	}
+	return name
+}
+
 func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.DownloadAttachmentMsg) tea.Cmd {
 	return func() tea.Msg {
 		// Download and decode the attachment using encoding provided in msg.Encoding.
@@ -2600,7 +2619,7 @@ func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.Download
 
 		// Save the attachment using an exclusive create so we never overwrite an existing file.
 		// If the filename already exists, append \" (n)\" before the extension.
-		origName := msg.Filename
+		origName := sanitizeFilename(msg.Filename)
 		ext := filepath.Ext(origName)
 		base := strings.TrimSuffix(origName, ext)
 		candidate := origName
