@@ -891,11 +891,17 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 								case *mail.InlineHeader:
 									ct, _, _ := h.ContentType()
 									if strings.HasPrefix(ct, "text/html") {
-										body, _ := io.ReadAll(p.Body)
+										body, readErr := io.ReadAll(p.Body)
+										if readErr != nil {
+											log.Printf("warning: failed to read decrypted HTML body: %v", readErr)
+										}
 										extractedBody = string(body)
 										htmlPartID = "decrypted"
 									} else if strings.HasPrefix(ct, "text/plain") && extractedBody == "" {
-										body, _ := io.ReadAll(p.Body)
+										body, readErr := io.ReadAll(p.Body)
+										if readErr != nil {
+											log.Printf("warning: failed to read decrypted plain body: %v", readErr)
+										}
 										extractedBody = string(body)
 										htmlPartID = "decrypted"
 									}
