@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// signatureFile returns the full path to the signature file.
+// signatureFile returns the full path to the global signature file.
 func signatureFile() (string, error) {
 	dir, err := configDir()
 	if err != nil {
@@ -14,7 +14,16 @@ func signatureFile() (string, error) {
 	return filepath.Join(dir, "signature.txt"), nil
 }
 
-// LoadSignature loads the signature from the signature file.
+// accountSignatureFile returns the path to the per-account signature file.
+func accountSignatureFile(accountID string) (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "signatures", accountID+".txt"), nil
+}
+
+// LoadSignature loads the signature from the global signature file.
 func LoadSignature() (string, error) {
 	path, err := signatureFile()
 	if err != nil {
@@ -30,7 +39,33 @@ func LoadSignature() (string, error) {
 	return string(data), nil
 }
 
-// SaveSignature saves the signature to the signature file.
+// LoadSignatureForAccount loads the per-account signature if one exists,
+// otherwise falls back to the global signature.
+func LoadSignatureForAccount(account *Account) (string, error) {
+	if account == nil || account.ID == "" {
+		return LoadSignature()
+	}
+
+	// Check for per-account signature file first
+	path, err := accountSignatureFile(account.ID)
+	if err != nil {
+		return LoadSignature()
+	}
+	data, err := SecureReadFile(path)
+	if err == nil && len(data) > 0 {
+		return string(data), nil
+	}
+
+	// Fall back to inline account signature
+	if account.Signature != "" {
+		return account.Signature, nil
+	}
+
+	// Fall back to global signature
+	return LoadSignature()
+}
+
+// SaveSignature saves the signature to the global signature file.
 func SaveSignature(signature string) error {
 	path, err := signatureFile()
 	if err != nil {
@@ -42,9 +77,35 @@ func SaveSignature(signature string) error {
 	return SecureWriteFile(path, []byte(signature), 0600)
 }
 
-// HasSignature checks if a signature file exists and is non-empty.
+// SaveSignatureForAccount saves a per-account signature file.
+func SaveSignatureForAccount(accountID, signature string) error {
+	path, err := accountSignatureFile(accountID)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	if signature == "" {
+		// Remove the file to fall back to global
+		os.Remove(path)
+		return nil
+	}
+	return SecureWriteFile(path, []byte(signature), 0600)
+}
+
+// HasSignature checks if a global signature file exists and is non-empty.
 func HasSignature() bool {
 	sig, err := LoadSignature()
+	if err != nil {
+		return false
+	}
+	return sig != ""
+}
+
+// HasAccountSignature checks if an account has its own signature (file or inline).
+func HasAccountSignature(account *Account) bool {
+	sig, err := LoadSignatureForAccount(account)
 	if err != nil {
 		return false
 	}

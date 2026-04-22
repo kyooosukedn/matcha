@@ -139,8 +139,12 @@ func NewComposer(from, to, subject, body string, hideTips bool) *Composer {
 	m.signatureInput.Prompt = "> "
 	m.signatureInput.SetHeight(3)
 	m.signatureInput.SetStyles(taStyles)
-	// Load default signature
-	if sig, err := config.LoadSignature(); err == nil && sig != "" {
+	// Load signature for the selected account, falling back to global
+	if len(m.accounts) > 0 && m.selectedAccountIdx < len(m.accounts) {
+		if sig, err := config.LoadSignatureForAccount(&m.accounts[m.selectedAccountIdx]); err == nil && sig != "" {
+			m.signatureInput.SetValue(sig)
+		}
+	} else if sig, err := config.LoadSignature(); err == nil && sig != "" {
 		m.signatureInput.SetValue(sig)
 	}
 
