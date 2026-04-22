@@ -41,6 +41,7 @@ const (
 	focusSignature
 	focusAttachment
 	focusEncryptSMIME
+	focusPriority
 	focusSend
 )
 
@@ -55,6 +56,7 @@ type Composer struct {
 	signatureInput  textarea.Model
 	attachmentPaths []string
 	encryptSMIME    bool
+	priority        int // 1=high, 3=normal, 5=low
 	width           int
 	height          int
 	confirmingExit  bool
@@ -419,6 +421,20 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 
+			case focusPriority:
+				if msg.String() == "enter" || msg.String() == " " {
+					// Cycle: normal(3) -> high(1) -> low(5) -> normal(3)
+					switch m.priority {
+					case 3, 0:
+						m.priority = 1
+					case 1, 2:
+						m.priority = 5
+					default:
+						m.priority = 3
+					}
+				}
+				return m, nil
+
 			case focusSend:
 				if msg.String() == "enter" {
 					acc := m.getSelectedAccount()
@@ -442,6 +458,7 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							SignSMIME:       acc != nil && acc.SMIMESignByDefault,
 							EncryptSMIME:    m.encryptSMIME,
 							SignPGP:         acc != nil && acc.PGPSignByDefault,
+							Priority:        m.priority,
 						}
 					}
 				}
@@ -547,6 +564,27 @@ func (m *Composer) View() tea.View {
 		encField = focusedStyle.Render(fmt.Sprintf("> %s %s", t("composer.encrypt_smime"), encToggle))
 	}
 
+	priorityLabel := "Normal"
+	priorityIcon := "\u2B24" // circle
+	switch m.priority {
+	case 1:
+		priorityLabel = "High"
+		priorityIcon = "\U0001F534" // red circle
+	case 2:
+		priorityLabel = "Medium-High"
+		priorityIcon = "\U0001F7E0" // orange circle
+	case 4:
+		priorityLabel = "Medium-Low"
+		priorityIcon = "\U0001F7E1" // yellow circle
+	case 5:
+		priorityLabel = "Low"
+		priorityIcon = "\U0001F535" // blue circle
+	}
+	priorityField := blurredStyle.Render(fmt.Sprintf("  Priority: %s %s", priorityIcon, priorityLabel))
+	if m.focusIndex == focusPriority {
+		priorityField = focusedStyle.Render(fmt.Sprintf("> Priority: %s %s", priorityIcon, priorityLabel))
+	}
+
 	// Build To field with suggestions
 	toFieldView := m.toInput.View()
 	if m.showSuggestions && len(m.suggestions) > 0 {
@@ -609,6 +647,7 @@ func (m *Composer) View() tea.View {
 		m.signatureInput.View(),
 		attachmentStyle.Render(attachmentField),
 		smimeToggleStyle.Render(encField),
+		smimeToggleStyle.Render(priorityField),
 		button,
 		"",
 	}

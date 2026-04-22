@@ -116,6 +116,7 @@ type OutgoingEmail struct {
 	EncryptSMIME bool
 	SignPGP      bool
 	EncryptPGP   bool
+	Priority     int // 1=high, 3=normal, 5=low
 }
 
 // NotifyType indicates the kind of notification event.

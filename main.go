@@ -2176,7 +2176,7 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 			attachments[filename] = fileData
 		}
 
-		rawMsg, err := sender.SendEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME, msg.SignPGP, false)
+		rawMsg, err := sender.SendEmail(account, recipients, cc, bcc, msg.Subject, body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References, msg.SignSMIME, msg.EncryptSMIME, msg.SignPGP, false, msg.Priority)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}
@@ -3048,7 +3048,7 @@ func runSendCLI(args []string) {
 	ccList := splitEmails(*cc)
 	bccList := splitEmails(*bcc)
 
-	rawMsg, sendErr := sender.SendEmail(account, recipients, ccList, bccList, *subject, emailBody, string(htmlBody), images, attachMap, "", nil, *signSMIME, *encryptSMIME, *signPGP, false)
+	rawMsg, sendErr := sender.SendEmail(account, recipients, ccList, bccList, *subject, emailBody, string(htmlBody), images, attachMap, "", nil, *signSMIME, *encryptSMIME, *signPGP, false, 3)
 	if sendErr != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", sendErr)
 		os.Exit(1)

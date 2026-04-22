@@ -155,7 +155,7 @@ func detectPlaintextOnly(body string, images, attachments map[string][]byte) boo
 }
 
 // SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
-func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool, signPGP bool, encryptPGP bool) ([]byte, error) {
+func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string, signSMIME bool, encryptSMIME bool, signPGP bool, encryptPGP bool, priority int) ([]byte, error) {
 	smtpServer := account.GetSMTPServer()
 	smtpPort := account.GetSMTPPort()
 
@@ -176,6 +176,23 @@ func SendEmail(account *config.Account, to, cc, bcc []string, subject, plainBody
 		"Date":         time.Now().Format(time.RFC1123Z),
 		"Message-ID":   generateMessageID(account.GetSendAsEmail()),
 		"MIME-Version": "1.0",
+	}
+
+	// Set priority headers if non-default (3 = normal, which is the default)
+	if priority == 1 {
+		headers["X-Priority"] = "1 (Highest)"
+		headers["Importance"] = "high"
+		headers["X-MSMail-Priority"] = "High"
+	} else if priority == 2 {
+		headers["X-Priority"] = "2 (High)"
+		headers["Importance"] = "high"
+	} else if priority == 4 {
+		headers["X-Priority"] = "4 (Low)"
+		headers["Importance"] = "low"
+	} else if priority == 5 {
+		headers["X-Priority"] = "5 (Lowest)"
+		headers["Importance"] = "low"
+		headers["X-MSMail-Priority"] = "Low"
 	}
 
 	if len(cc) > 0 {

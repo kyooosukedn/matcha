@@ -38,6 +38,7 @@ type SendEmailMsg struct {
 	SignSMIME       bool   // Whether to sign the email using S/MIME
 	EncryptSMIME    bool   // Whether to encrypt the email using S/MIME
 	SignPGP         bool   // Whether to sign the email using PGP
+	Priority        int    // Email priority: 1=high, 3=normal (default), 5=low
 }
 
 type Credentials struct {
