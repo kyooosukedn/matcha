@@ -139,20 +139,29 @@ func NewComposer(from, to, subject, body string, hideTips bool) *Composer {
 	m.signatureInput.Prompt = "> "
 	m.signatureInput.SetHeight(3)
 	m.signatureInput.SetStyles(taStyles)
-	// Load signature for the selected account, falling back to global
-	if len(m.accounts) > 0 && m.selectedAccountIdx < len(m.accounts) {
-		if sig, err := config.LoadSignatureForAccount(&m.accounts[m.selectedAccountIdx]); err == nil && sig != "" {
-			m.signatureInput.SetValue(sig)
-		}
-	} else if sig, err := config.LoadSignature(); err == nil && sig != "" {
-		m.signatureInput.SetValue(sig)
-	}
+	m.updateSignature()
 
 	// Start focus on To field (From is selectable but not a text input)
 	m.focusIndex = focusTo
 	m.toInput.Focus()
 
 	return m
+}
+
+// updateSignature updates the signature input based on the current selected account.
+func (m *Composer) updateSignature() {
+	if len(m.accounts) > 0 && m.selectedAccountIdx < len(m.accounts) {
+		if sig, err := config.LoadSignatureForAccount(&m.accounts[m.selectedAccountIdx]); err == nil && sig != "" {
+			m.signatureInput.SetValue(sig)
+			return
+		}
+	}
+
+	if sig, err := config.LoadSignature(); err == nil && sig != "" {
+		m.signatureInput.SetValue(sig)
+	} else {
+		m.signatureInput.SetValue("")
+	}
 }
 
 // NewComposerWithAccounts initializes a composer with multiple account support.
@@ -167,6 +176,7 @@ func NewComposerWithAccounts(accounts []config.Account, selectedAccountID string
 			break
 		}
 	}
+	m.updateSignature()
 
 	return m
 }
@@ -323,10 +333,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "up", "k":
 				if m.selectedAccountIdx > 0 {
 					m.selectedAccountIdx--
+					m.updateSignature()
 				}
 			case "down", "j":
 				if m.selectedAccountIdx < len(m.accounts)-1 {
 					m.selectedAccountIdx++
+					m.updateSignature()
 				}
 			case "enter":
 				m.showAccountPicker = false
@@ -702,6 +714,7 @@ func (m *Composer) SetAccounts(accounts []config.Account) {
 	if m.selectedAccountIdx >= len(accounts) {
 		m.selectedAccountIdx = 0
 	}
+	m.updateSignature()
 }
 
 // SetSelectedAccount sets the selected account by ID.
@@ -709,6 +722,7 @@ func (m *Composer) SetSelectedAccount(accountID string) {
 	for i, acc := range m.accounts {
 		if acc.ID == accountID {
 			m.selectedAccountIdx = i
+			m.updateSignature()
 			return
 		}
 	}
