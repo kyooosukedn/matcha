@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -527,14 +528,26 @@ func (m *Composer) View() tea.View {
 		}
 	} else {
 		var names []string
+		var totalSize int64
 		for _, p := range m.attachmentPaths {
-			names = append(names, filepath.Base(p))
+			info, err := os.Stat(p)
+			sizeStr := ""
+			if err == nil {
+				totalSize += info.Size()
+				sizeStr = formatFileSize(info.Size())
+			}
+			name := filepath.Base(p)
+			if sizeStr != "" {
+				name += fmt.Sprintf(" (%s)", sizeStr)
+			}
+			names = append(names, name)
 		}
 		attachmentText := strings.Join(names, ", ")
+		totalStr := formatFileSize(totalSize)
 		if m.focusIndex == focusAttachment {
-			attachmentField = focusedStyle.Render(fmt.Sprintf("> %s (%d): %s", t("composer.attachments"), len(m.attachmentPaths), attachmentText))
+			attachmentField = focusedStyle.Render(fmt.Sprintf("> %s (%d, %s): %s", t("composer.attachments"), len(m.attachmentPaths), totalStr, attachmentText))
 		} else {
-			attachmentField = blurredStyle.Render(fmt.Sprintf("  %s (%d): %s", t("composer.attachments"), len(m.attachmentPaths), attachmentText))
+			attachmentField = blurredStyle.Render(fmt.Sprintf("  %s (%d, %s): %s", t("composer.attachments"), len(m.attachmentPaths), totalStr, attachmentText))
 		}
 	}
 
