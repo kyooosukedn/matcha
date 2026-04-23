@@ -102,7 +102,9 @@ type GoToSettingsMsg struct{}
 
 type GoToTrashArchiveMsg struct{}
 
-type GoToSignatureEditorMsg struct{}
+type GoToSignatureEditorMsg struct {
+	AccountID string
+}
 
 type FetchMoreEmailsMsg struct {
 	Offset    uint32

@@ -961,7 +961,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.current.Init()
 
 	case tui.GoToSignatureEditorMsg:
-		m.current = tui.NewSignatureEditor()
+		m.current = tui.NewSignatureEditor(msg.AccountID)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 

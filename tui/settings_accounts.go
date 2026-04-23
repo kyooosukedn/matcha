@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/floatpane/matcha/config"
 )
 
 func (m *Settings) updateAccounts(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -69,6 +70,10 @@ func (m *Settings) updateAccounts(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					POP3Port:     acc.POP3Port,
 				}
 			}
+		}
+	case "s": // Edit account signature
+		if m.accountsCursor < len(m.cfg.Accounts) {
+			return m, func() tea.Msg { return GoToSignatureEditorMsg{AccountID: m.cfg.Accounts[m.accountsCursor].ID} }
 		}
 	case "c": // Quick shortcut to crypto config
 		if m.accountsCursor < len(m.cfg.Accounts) {
@@ -138,6 +143,9 @@ func (m *Settings) viewAccounts() string {
 		}
 		if account.PGPPublicKey != "" && account.PGPPrivateKey != "" {
 			providerInfo += " [PGP Configured]"
+		}
+		if config.HasAccountSignature(&account) {
+			providerInfo += " [Signature]"
 		}
 
 		line := fmt.Sprintf("%s - %s", displayName, accountEmailStyle.Render(providerInfo))

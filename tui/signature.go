@@ -9,13 +9,14 @@ import (
 
 // SignatureEditor displays the signature editing screen.
 type SignatureEditor struct {
-	textarea textarea.Model
-	width    int
-	height   int
+	textarea  textarea.Model
+	accountID string
+	width     int
+	height    int
 }
 
 // NewSignatureEditor creates a new signature editor model.
-func NewSignatureEditor() *SignatureEditor {
+func NewSignatureEditor(accountID string) *SignatureEditor {
 	ta := textarea.New()
 	ta.Placeholder = "Enter your email signature...\n\nExample:\nBest regards,\nDrew"
 	ta.SetHeight(10)
@@ -23,12 +24,19 @@ func NewSignatureEditor() *SignatureEditor {
 	ta.Focus()
 
 	// Load existing signature
-	if sig, err := config.LoadSignature(); err == nil && sig != "" {
-		ta.SetValue(sig)
+	if accountID != "" {
+		if sig, err := config.LoadRawAccountSignature(&config.Account{ID: accountID}); err == nil && sig != "" {
+			ta.SetValue(sig)
+		}
+	} else {
+		if sig, err := config.LoadSignature(); err == nil && sig != "" {
+			ta.SetValue(sig)
+		}
 	}
 
 	return &SignatureEditor{
-		textarea: ta,
+		textarea:  ta,
+		accountID: accountID,
 	}
 }
 
@@ -56,7 +64,11 @@ func (m *SignatureEditor) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			// Save and go back to settings
 			signature := m.textarea.Value()
-			go config.SaveSignature(signature)
+			if m.accountID != "" {
+				go config.SaveSignatureForAccount(m.accountID, signature)
+			} else {
+				go config.SaveSignature(signature)
+			}
 			return m, func() tea.Msg { return GoToSettingsMsg{} }
 		}
 	}

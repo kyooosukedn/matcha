@@ -123,7 +123,7 @@
       "title": "Ustawienia Kont",
       "no_accounts": "Brak skonfigurowanych kont.",
       "add_account": "Dodaj Nowe Konto",
-      "help": "↑/↓: nawigacja • enter: edytuj konfigurację szyfrowania • e: edytuj serwer • d: usuń"
+      "help": "↑/↓: nawigacja • enter: edytuj konfigurację szyfrowania • e: edytuj serwer • s: edytuj podpis • d: usuń"
     },
     "settings_theme": {
       "title": "Motyw",

@@ -39,17 +39,17 @@ func LoadSignature() (string, error) {
 	return string(data), nil
 }
 
-// LoadSignatureForAccount loads the per-account signature if one exists,
-// otherwise falls back to the global signature.
-func LoadSignatureForAccount(account *Account) (string, error) {
+// LoadRawAccountSignature loads the per-account signature if one exists,
+// without falling back to the global signature.
+func LoadRawAccountSignature(account *Account) (string, error) {
 	if account == nil || account.ID == "" {
-		return LoadSignature()
+		return "", nil
 	}
 
 	// Check for per-account signature file first
 	path, err := accountSignatureFile(account.ID)
 	if err != nil {
-		return LoadSignature()
+		return "", err
 	}
 	data, err := SecureReadFile(path)
 	if err == nil && len(data) > 0 {
@@ -61,6 +61,16 @@ func LoadSignatureForAccount(account *Account) (string, error) {
 		return account.Signature, nil
 	}
 
+	return "", nil
+}
+
+// LoadSignatureForAccount loads the per-account signature if one exists,
+// otherwise falls back to the global signature.
+func LoadSignatureForAccount(account *Account) (string, error) {
+	sig, err := LoadRawAccountSignature(account)
+	if err == nil && sig != "" {
+		return sig, nil
+	}
 	// Fall back to global signature
 	return LoadSignature()
 }
@@ -105,7 +115,7 @@ func HasSignature() bool {
 
 // HasAccountSignature checks if an account has its own signature (file or inline).
 func HasAccountSignature(account *Account) bool {
-	sig, err := LoadSignatureForAccount(account)
+	sig, err := LoadRawAccountSignature(account)
 	if err != nil {
 		return false
 	}

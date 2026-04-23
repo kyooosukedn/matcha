@@ -121,7 +121,7 @@
       "title": "Account Settings",
       "no_accounts": "No accounts configured.",
       "add_account": "Add New Account",
-      "help": "↑/↓: navigate • enter: edit crypto config • e: edit server • d: delete"
+      "help": "↑/↓: navigate • enter: edit crypto config • e: edit server • s: edit signature • d: delete"
     },
     "settings_theme": {
       "title": "Theme",
