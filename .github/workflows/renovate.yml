@@ -6,6 +6,7 @@ on:
 jobs:
   renovate:
     runs-on: ubuntu-latest
+    if: github.repository == 'floatpane/matcha'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
